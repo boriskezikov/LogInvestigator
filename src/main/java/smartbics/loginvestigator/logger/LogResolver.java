@@ -3,7 +3,9 @@ package smartbics.loginvestigator.logger;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import smartbics.loginvestigator.utils.LogNotFoundException;
 
 import javax.annotation.PostConstruct;
 import java.io.*;
@@ -15,6 +17,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static smartbics.loginvestigator.utils.Constants.logsPath;
+import static smartbics.loginvestigator.utils.Constants.statisticsPath;
+
 @Slf4j
 @Component
 @AllArgsConstructor
@@ -22,9 +27,7 @@ public class LogResolver {
 
     @PostConstruct
     public void init() throws IOException {
-        final String directoryPath = "/Users/kezikovboris/Downloads/loginvestigator/src/main/resources/logs/";
-
-        File directory = new File(directoryPath);
+        File directory = new File(logsPath);
         if (directory.exists() && directory.isDirectory()) {
             processDirectory(directory);
         } else {
@@ -46,9 +49,8 @@ public class LogResolver {
         ExecutorService service = Executors.newFixedThreadPool(10);
         Arrays.stream(files).filter(File::isFile).<Runnable>map(f -> () -> {
             try (Scanner scanner = new Scanner(f)) {
-                while (scanner.hasNext()) {
-                    if(StringUtils.isNotBlank(scanner.nextLine()))
-                        timeList.add(parseDate(scanner.nextLine()));
+                while (scanner.hasNextLine()) {
+                    parseDate(scanner.nextLine()).ifPresent(timeList::add);
                 }
             } catch (FileNotFoundException e) {
                 throw new LogNotFoundException("Log is absent in provided path.");
@@ -64,32 +66,28 @@ public class LogResolver {
         processLogsInfo(timeList);
     }
 
-    private static LocalDateTime parseDate (String logNote) {
+    private static Optional<LocalDateTime> parseDate(String logNote) {
         List<String> strings = Arrays.asList(logNote.split(";"));
-        if(!strings.isEmpty()){
+        if (!strings.isEmpty()) {
             String date = strings.get(0);
             if (StringUtils.isNotBlank(date))
-                return LocalDateTime.parse(date);
+                return Optional.of(LocalDateTime.parse(date));
         }
-        throw new LogNotFoundException("Not found");
-
+        return Optional.empty();
     }
 
     private static void processLogsInfo(List<LocalDateTime> localDateTimes) throws IOException {
-        FileWriter fileWriter = new FileWriter("/Users/kezikovboris/Downloads/loginvestigator/src/main/resources/logStatistics.txt");
-
+        FileWriter fileWriter = new FileWriter(statisticsPath);
         localDateTimes.stream()
                 .collect(Collectors.groupingBy(e -> e.truncatedTo(ChronoUnit.MINUTES), Collectors.counting()))
-                .entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(k -> {
-                try {
-                    fileWriter.write(String.format("From %s found %s log notes (errors/warnings). \n", k.getKey(), k.getValue()));
-                    log.info("New statistics added");
-                } catch (IOException e) {
-                    log.error(e.getLocalizedMessage());
-                }
-            });
+                .entrySet().stream().sorted().forEach(k -> {
+            try {
+                fileWriter.write(String.format("From %s found %s log notes (errors/warnings). \n", k.getKey(), k.getValue()));
+                log.info("New statistics added");
+            } catch (IOException e) {
+                log.error(e.getLocalizedMessage());
+            }
+        });
         fileWriter.close();
     }
 }

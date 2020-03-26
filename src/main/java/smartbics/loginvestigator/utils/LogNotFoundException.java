@@ -1,8 +1,8 @@
-package smartbics.loginvestigator.logger;
+package smartbics.loginvestigator.utils;
 
 public class LogNotFoundException extends RuntimeException {
 
-    LogNotFoundException(String message){
+    public LogNotFoundException(String message){
         super(message);
     }
 }
